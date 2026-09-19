@@ -1,7 +1,7 @@
 {
   "name": "dsh-context-doctor",
-  "version": "0.7.2",
-  "description": "DSH 上下文注入审计插件：统计 AGENTS.md 指令链 / 技能目录 / 工具 schema / MCP 工具的 token 成本，检测重复与冲突；原生 Context Doctor 面板 + context_audit 工具。",
+  "version": "0.7.2-bluze.1",
+  "description": "DSH context-injection audit plugin: per-item token cost for the instruction chain / skill catalog / tool schemas / MCP tool surface; detects duplicates, conflicts, and wasteful injectables. Native Context Doctor panel + context_audit tool.",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/types/index.d.ts",

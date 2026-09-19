@@ -20,6 +20,7 @@ import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-cli
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { AuditReport } from '../audit.ts'
 import type { AuditUiState } from './store.ts'
+import { REFRESH_CSS, REFRESH_STYLE_ID, ageSeconds, refreshView, type RefreshPhase } from './refresh.ts'
 import type { createAuditStore } from './store.ts'
 import { formatTokens } from '../tokens.ts'
 import { NS } from './locales.ts'
@@ -157,15 +158,24 @@ function buildSegments(report: AuditReport, t: ContextAuditRingProps['t']): Segm
   }]
 }
 
+/** Heartbeat glyph in the composer trigger. */
 function PulseIcon({ size = 15 }: { size?: number }): ReactElement {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path d="M3 12h4l2.05-5 3.62 10L15.2 12H21" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 }
 
+/** Refresh glyph; spinning state driven by `data-cd-spin` in REFRESH_CSS. */
 function RefreshIcon(): ReactElement {
   return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path d="M20 11a8 8 0 0 0-14.98-3.8M4 5v4h4M4 13a8 8 0 0 0 14.98 3.8M20 19v-4h-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+}
+
+/** Check glyph; one-shot pop after a manual refresh lands. */
+function CheckIcon(): ReactElement {
+  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M5 12.5l4.2 4.2L19 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 }
 
@@ -178,9 +188,22 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
   const panelId = useId()
   const dockRef = useRef<HTMLSpanElement | null>(null)
   const controllerRef = useRef<AbortController | null>(null)
+  // Held down, `:active` is already visually true; the flag keeps the pressed
+  // look alive when the pointer comes up outside the button.
+  const [pressed, setPressed] = useState(false)
+  // One-shot "it landed" confirm; flipped by a timer, not by the store.
+  const [flash, setFlash] = useState(false)
+  // Re-render clock so "updated Ns ago" keeps counting while the panel is open.
+  const [now, setNow] = useState(() => Date.now())
+  const refreshStart = useRef<number | null>(null)
+  const flashTimer = useRef<number | null>(null)
+  const [elapsed, setElapsed] = useState(0)
 
-  const refresh = useCallback((forceFresh: boolean = false) => {
+  const refresh = useCallback((forceFresh: boolean = false, settle: boolean = false) => {
     controllerRef.current?.abort()
+    refreshStart.current = Date.now()
+    setElapsed(0)
+    if (settle) setFlash(false)
     const controller = new AbortController()
     controllerRef.current = controller
     actions.setState('loading', null)
@@ -198,10 +221,31 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
       return response.json() as Promise<{ ok: boolean; report: AuditUiState['report'] }>
     }).then(data => {
       if (controller.signal.aborted) return
-      if (data.ok && data.report !== null && data.report !== undefined) actions.setReport(data.report)
-      else actions.setState('error', 'empty audit response')
+      refreshStart.current = null
+      if (!settle) {
+        if (data.ok && data.report !== null && data.report !== undefined) actions.setReport(data.report)
+        else actions.setState('error', 'empty audit response')
+        return
+      }
+      // The store stamps `refreshedAt` on success; the control only has to say
+      // "that click landed" before settling back to idle.
+      if (!data.ok || data.report === null || data.report === undefined) {
+        actions.setState('error', 'empty audit response')
+        return
+      }
+      actions.setReport(data.report)
+      if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
+      setFlash(true)
+      setElapsed(0)
+      flashTimer.current = window.setTimeout(() => {
+        flashTimer.current = null
+        setFlash(false)
+      }, 1500)
     }, () => {
-      if (!controller.signal.aborted) actions.setState('error', 'audit transport error')
+      if (!controller.signal.aborted) {
+        refreshStart.current = null
+        actions.setState('error', 'audit transport error')
+      }
     })
   }, [actions, sessionId])
 
@@ -224,6 +268,34 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
     return () => controllerRef.current?.abort()
   }, [refresh])
 
+  // While the panel is open: re-render the age line and the in-flight seconds,
+  // and make sure neither the request nor the flash timer outlives the dock.
+  useEffect(() => {
+    if (!open) return undefined
+    const timer = window.setInterval(() => {
+      setNow(Date.now())
+      setElapsed(refreshStart.current === null ? 0 : ageSeconds(refreshStart.current, Date.now()))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [open])
+
+  useEffect(() => () => {
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
+  }, [])
+
+  // `:hover` / `:active` / `:focus-visible` and the keyframes cannot be written
+  // as inline styles, so the control brings its own stylesheet. Injection is
+  // guarded by id: two docks in one shell must not race to append the same
+  // rules, and a remount must not stack a second copy.
+  useEffect(() => {
+    if (document.getElementById(REFRESH_STYLE_ID) !== null) return undefined
+    const tag = document.createElement('style')
+    tag.id = REFRESH_STYLE_ID
+    tag.textContent = REFRESH_CSS
+    document.head.appendChild(tag)
+    return () => { tag.remove() }
+  }, [])
+
   // Dismiss on Escape or on any pointer landing outside the control.
   useEffect(() => {
     if (!open) return undefined
@@ -241,6 +313,7 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
     }
   }, [open])
 
+  const styleScope = useId()
   const segments = useMemo(() => report === null ? [] : buildSegments(report, t), [report, t])
   const resident = segments.reduce((sum, segment) => sum + segment.tokens, 0)
   const percent = Math.min(resident / FULL_SCALE, 1)
@@ -257,13 +330,18 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
   const showHealth = level !== 'mint' || suggestions.length > 0
 
   const updated = state.refreshedAt === null ? '—' : (() => {
-    const seconds = Math.max(0, Math.round((Date.now() - state.refreshedAt) / 1000))
+    const seconds = ageSeconds(state.refreshedAt, now)
     if (seconds < 10) return t('cd.justNow')
     if (seconds < 60) return t('cd.secondsAgo', { n: seconds })
     return t('cd.minutesAgo', { n: Math.round(seconds / 60) })
   })()
 
-  return <span ref={dockRef} data-context-doctor style={dockStyle}>
+  // "loading" is the one phase the store already owns; `flash` is the only
+  // extra bit the control keeps, and it only ever follows a manual click.
+  const refreshPhase: RefreshPhase = state.state === 'loading' ? 'loading' : 'settled'
+  const refreshState = refreshView(refreshPhase, flash, elapsed, t)
+
+  return <span ref={dockRef} data-context-doctor data-cd-scope={styleScope} style={dockStyle}>
     {/*
       Icon-only on purpose. A labelled pill cost ~150px of the composer tool
       row, and stacked with other plugins' buttons plus a long model name it
@@ -374,8 +452,25 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
 
       <footer style={footerStyle}>
         <span style={updatedStyle}>{t('cd.updated', { when: updated })}</span>
-        <button type="button" onClick={() => refresh(true)} disabled={state.state === 'loading'} style={refreshStyle}>
-          <RefreshIcon />{t('cd.refresh')}
+        <button type="button"
+          data-cd-refresh
+          data-pressed={pressed ? 'true' : 'false'}
+          data-cd-spin={refreshState.spinning ? 'true' : 'false'}
+          data-cd-flash={refreshState.flash ? 'true' : 'false'}
+          onClick={() => refresh(true, true)}
+          onMouseDown={() => setPressed(true)}
+          onMouseUp={() => setPressed(false)}
+          onMouseLeave={() => setPressed(false)}
+          disabled={state.state === 'loading'}
+          title={refreshState.elapsed > 0 ? `${refreshState.label} ${refreshState.elapsed}s` : refreshState.label}
+          aria-label={refreshState.elapsed > 0 ? `${refreshState.label} ${refreshState.elapsed}s` : refreshState.label}
+          style={{ ...refreshButtonStyle, color: refreshState.flash ? TONE.mint : TONE.blue }}>
+          {refreshState.flash
+            ? <CheckIcon />
+            : <span aria-hidden="true" style={refreshState.elapsed > 0 ? { display: 'inline-flex' } : undefined}>
+              <RefreshIcon />
+            </span>}
+          <span style={refreshLabelStyle}>{refreshState.label}</span>
         </button>
       </footer>
     </section>}
@@ -431,4 +526,9 @@ const suggestionCopyStyle: CSSProperties = { color: TONE.muted, fontSize: 11.5, 
 
 const footerStyle: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '11px 16px 12px' }
 const updatedStyle: CSSProperties = { color: TONE.quiet, fontSize: 11, fontVariantNumeric: 'tabular-nums' }
-const refreshStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: 0, color: TONE.blue, background: 'transparent', border: 0, cursor: 'pointer', font: 'inherit', fontSize: 12, fontWeight: 500 }
+// The refresh control reads as a button: a visible surface that reacts to hover,
+// press, keyboard focus, and a spinning glyph while the audit runs. Colour
+// (blue → mint on success) is inline because it tracks state; the interaction
+// states live in REFRESH_CSS because CSS cannot be written inline.
+const refreshButtonStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px 4px 7px', color: TONE.blue, background: 'transparent', border: `1px solid ${TONE.border}`, borderRadius: 7, cursor: 'pointer', font: 'inherit', fontSize: 12, fontWeight: 500, lineHeight: 1 }
+const refreshLabelStyle: CSSProperties = { fontVariantNumeric: 'tabular-nums' }

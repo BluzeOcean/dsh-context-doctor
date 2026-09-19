@@ -205,6 +205,12 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
     })
   }, [actions, sessionId])
 
+  // Must be declared BEFORE any hook that puts `report` in its dependency array;
+  // React evaluates deps during render, and `const` is in the temporal dead
+  // zone until its declaration line runs. The previous layout put `report`
+  // after `revealFile`, crashing the component with ReferenceError on mount.
+  const report = state.report
+
   /** Click a file row in the instruction chain to open the containing folder. */
   const revealFile = useCallback((relativePath: string) => {
     if (report === null) return
@@ -235,7 +241,6 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
     }
   }, [open])
 
-  const report = state.report
   const segments = useMemo(() => report === null ? [] : buildSegments(report, t), [report, t])
   const resident = segments.reduce((sum, segment) => sum + segment.tokens, 0)
   const percent = Math.min(resident / FULL_SCALE, 1)

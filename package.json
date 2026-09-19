@@ -1,6 +1,6 @@
 {
   "name": "dsh-context-doctor",
-  "version": "0.7.2-bluze.5",
+  "version": "0.7.2-bluze.6",
   "description": "DSH context-injection audit plugin: per-item token cost for the instruction chain / skill catalog / tool schemas / MCP tool surface; detects duplicates, conflicts, and wasteful injectables. Native Context Doctor panel + context_audit tool.",
   "type": "module",
   "main": "./lib/index.js",

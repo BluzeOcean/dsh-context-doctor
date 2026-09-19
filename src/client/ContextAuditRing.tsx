@@ -30,6 +30,7 @@ export type ContextAuditRingProps =
   & PropsLocale<typeof NS>
 
 const AUDIT_API = '/api/context-doctor/audit'
+const REVEAL_API = '/api/context-doctor/reveal'
 /** Budget the rail measures against; the audit itself is budget-agnostic. */
 const FULL_SCALE = 50_000
 /** Where the rail changes colour — drawn as ticks so the rule is visible. */
@@ -63,7 +64,7 @@ interface Segment {
   sub: string
   tokens: number
   color: string
-  detail: { title: string; rows: { name: string; tokens: number }[]; note?: string } | null
+  detail: { title: string; rows: { name: string; tokens: number; path?: string }[]; note?: string } | null
 }
 
 /** Trailing path segment; the full path stays in the row's `title`. */
@@ -107,7 +108,7 @@ function buildSegments(report: AuditReport, t: ContextAuditRingProps['t']): Segm
       title: t('cd.byFile'),
       rows: [...instructions.files]
         .sort((a, b) => b.tokens - a.tokens)
-        .map(file => ({ name: baseName(file.path), tokens: file.tokens })),
+        .map(file => ({ name: baseName(file.path), tokens: file.tokens, path: file.path })),
       ...instructions.duplicateBlocks.length > 0 ? {
         note: t('cd.duplicateBlocks', {
           n: instructions.duplicateBlocks.length,
@@ -178,7 +179,7 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
   const dockRef = useRef<HTMLSpanElement | null>(null)
   const controllerRef = useRef<AbortController | null>(null)
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback((forceFresh: boolean = false) => {
     controllerRef.current?.abort()
     const controller = new AbortController()
     controllerRef.current = controller
@@ -189,7 +190,9 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
     // means "follow the browser" (issue #11). The locale plugin keeps
     // `<html lang>` on the active locale, so that is the reading to forward.
     const lang = document.documentElement.lang.toLowerCase().startsWith('zh') ? 'zh' : 'en'
-    const url = `${AUDIT_API}?session=${encodeURIComponent(sessionId)}&detail=developer&lang=${lang}`
+    // `fresh=1` 让手动「刷新」按钮绕开宿主的 60s 缓存，确保面板真的重审。
+    // 自动挂载的首次请求仍走缓存，避免冷启动多 agent 重复审计。
+    const url = `${AUDIT_API}?session=${encodeURIComponent(sessionId)}&detail=developer&lang=${lang}${forceFresh ? '&fresh=1' : ''}`
     void fetch(url, { signal: controller.signal }).then(response => {
       if (!response.ok) throw new Error(`audit ${response.status}`)
       return response.json() as Promise<{ ok: boolean; report: AuditUiState['report'] }>
@@ -202,8 +205,16 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
     })
   }, [actions, sessionId])
 
+  /** Click a file row in the instruction chain to open the containing folder. */
+  const revealFile = useCallback((relativePath: string) => {
+    if (report === null) return
+    const lang = document.documentElement.lang.toLowerCase().startsWith('zh') ? 'zh' : 'en'
+    const url = `${REVEAL_API}?cwd=${encodeURIComponent(report.cwd)}&path=${encodeURIComponent(relativePath)}&lang=${lang}`
+    void fetch(url).catch(() => { /* host-side reveal can fail silently; the panel keeps working */ })
+  }, [report])
+
   useEffect(() => {
-    refresh()
+    refresh(false)
     return () => controllerRef.current?.abort()
   }, [refresh])
 
@@ -323,8 +334,14 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
 
                 {isOpen && segment.detail !== null && <div style={detailStyle}>
                   <span style={detailTitleStyle}>{segment.detail.title}</span>
-                  {segment.detail.rows.slice(0, DETAIL_LIMIT).map(row =>
-                    <span key={row.name} style={detailRowStyle} title={row.name}>
+                  {segment.detail.rows.slice(0, DETAIL_LIMIT).map(row => row.path !== undefined
+                    ? <button key={row.name} type="button" onClick={() => revealFile(row.path as string)}
+                      title={`${row.path} — ${t('cd.reveal')}`}
+                      style={{ ...detailRowStyle, background: 'transparent', border: 0, color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+                      <span style={{ ...detailNameStyle, cursor: 'pointer' }}>{row.name}</span>
+                      <span style={detailValueStyle}>{formatTokens(row.tokens)}</span>
+                    </button>
+                    : <span key={row.name} style={detailRowStyle} title={row.name}>
                       <span style={detailNameStyle}>{row.name}</span>
                       <span style={detailValueStyle}>{formatTokens(row.tokens)}</span>
                     </span>)}
@@ -352,7 +369,7 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
 
       <footer style={footerStyle}>
         <span style={updatedStyle}>{t('cd.updated', { when: updated })}</span>
-        <button type="button" onClick={refresh} disabled={state.state === 'loading'} style={refreshStyle}>
+        <button type="button" onClick={() => refresh(true)} disabled={state.state === 'loading'} style={refreshStyle}>
           <RefreshIcon />{t('cd.refresh')}
         </button>
       </footer>

@@ -48,6 +48,7 @@ const en = {
   'cd.shadowed': '{n} skills shadowed by a same-name entry',
   'cd.more': '+{n} more',
   'cd.noDetail': 'No breakdown available',
+  'cd.reveal': 'Open containing folder',
 
   // Health
   'cd.healthy': 'Healthy',
@@ -103,6 +104,7 @@ const zh: Record<keyof typeof en, string> = {
   'cd.shadowed': '{n} 个技能被同名条目遮蔽',
   'cd.more': '还有 {n} 项',
   'cd.noDetail': '暂无明细',
+  'cd.reveal': '打开所在目录',
 
   'cd.healthy': '健康',
   'cd.review': '建议查看',

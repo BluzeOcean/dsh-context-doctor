@@ -1,4 +1,4 @@
-# Context Doctor (bluzeOcean fork)
+# Context Doctor (BluzeOcean fork)
 
 DSH context-injection audit plugin. Quantifies what every model request
 silently carries — instruction chain tokens, skill catalog tokens, tool

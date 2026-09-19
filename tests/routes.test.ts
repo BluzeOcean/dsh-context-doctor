@@ -48,11 +48,15 @@ test('makeAuditRoutes: 返回 audit 路由并返回报告', async () => {
     defaultCwd: '/tmp/x',
     cacheTtlMs: 60_000,
   })
-  // 覆盖 runAudit 依赖：直接替换内部 audit 执行（通过把 skills.list 抛错触发失败路径不现实；
-  // 这里改为验证路由形状与方法检查）
-  assert.equal(routes.length, 1)
-  assert.equal(routes[0]!.kind, 'exact')
-  assert.equal(routes[0]!.path, '/api/context-doctor/audit')
+  // 两条路由：audit（面板数据通道）+ reveal（在系统文件管理器中打开文件所在目录）。
+  // 这里以前断言 length === 1；reveal 路由加进来时没同步更新，测试一直红。
+  assert.deepEqual(
+    routes.map(route => route.path),
+    ['/api/context-doctor/audit', '/api/context-doctor/reveal'],
+  )
+  const auditRoute = routes.find(route => route.path === '/api/context-doctor/audit')
+  assert.ok(auditRoute !== undefined)
+  assert.equal(auditRoute.kind, 'exact')
 
   // 方法检查：POST 返回 405
   const res405 = await new Promise<{ status: number }>((resolve) => {
@@ -170,4 +174,43 @@ test('makeAuditRoutes: detail=developer 附带 receipt，且与 summary 分开�
   const bogus = await callHandler(routes[0]!.handler, '/api/context-doctor/audit?cwd=/tmp/detail&detail=nonsense')
   const bogusBody = bogus.body as { ok: boolean; report: AuditReport }
   assert.equal(bogusBody.report.receipt, undefined)
+})
+
+test('makeAuditRoutes: reveal 路由校验 path 并拒绝越界路径', async () => {
+  const routes = makeAuditRoutes({
+    deps: {
+      fs: {} as never,
+      skills: { list: async () => [] } as never,
+      tools: {} as never,
+    },
+    defaultCwd: '/workspace/proj',
+    cacheTtlMs: 60_000,
+  })
+  const reveal = routes.find(route => route.path === '/api/context-doctor/reveal')
+  assert.ok(reveal !== undefined, 'reveal 路由应注册')
+  assert.equal(reveal.kind, 'exact')
+
+  // 方法检查：POST 返回 405
+  const method = await new Promise<{ status: number }>((resolve) => {
+    const res = {
+      writeHead(status: number) { this.status = status; return this },
+      end() { resolve({ status: this.status }) },
+    } as ServerResponse & { status: number }
+    reveal.handler({ method: 'POST', url: '/api/context-doctor/reveal' } as IncomingMessage, res)
+  })
+  assert.equal(method.status, 405)
+
+  // 缺 path → 400
+  const missing = await callHandler(reveal.handler, '/api/context-doctor/reveal?cwd=/workspace/proj')
+  assert.equal(missing.status, 400)
+
+  // 越界路径（`..` 逃出 cwd）→ 403，不会调用系统打开器
+  const escape = await callHandler(
+    reveal.handler,
+    '/api/context-doctor/reveal?cwd=/workspace/proj&path=' + encodeURIComponent('../../etc/passwd'),
+  )
+  assert.equal(escape.status, 403)
+
+  // 合法路径的 200 分支会真的拉起系统文件管理器（explorer.exe / open / xdg-open），
+  // 所以测试里不自动触发，避免跑测试时弹窗；该分支已在运行中的实例上手工验证。
 })

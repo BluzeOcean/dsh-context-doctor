@@ -38,6 +38,7 @@ declare const en: {
     readonly 'cd.shadowed': "{n} skills shadowed by a same-name entry";
     readonly 'cd.more': "+{n} more";
     readonly 'cd.noDetail': "No breakdown available";
+    readonly 'cd.reveal': "Open containing folder";
     readonly 'cd.healthy': "Healthy";
     readonly 'cd.review': "Worth a look";
     readonly 'cd.heavy': "Over budget";
@@ -49,6 +50,8 @@ declare const en: {
     readonly 'cd.error': "Audit failed";
     readonly 'cd.emptyState': "No audit data yet.";
     readonly 'cd.refresh': "Refresh";
+    readonly 'cd.refreshing': "Refreshing…";
+    readonly 'cd.refreshed': "Updated";
     readonly 'cd.updated': "Updated {when}";
     readonly 'cd.justNow': "just now";
     readonly 'cd.secondsAgo': "{n}s ago";

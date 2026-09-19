@@ -24,8 +24,8 @@ export interface AuditUiState {
 export type AuditUiActions = {
   /** Mark the fetch lifecycle. */
   setState: (draft: AuditUiState, state: AuditUiState['state'], error: string | null) => void
-  /** Store a fetched report. */
-  setReport: (draft: AuditUiState, report: AuditReport) => void
+  /** Store a fetched report, or clear it when switching conversations. */
+  setReport: (draft: AuditUiState, report: AuditReport | null) => void
 }
 
 /** Create the audit store handle (apply world only; never module-level). */
@@ -44,6 +44,13 @@ export function createAuditStore(): EngineStoreHandle<AuditUiState, AuditUiActio
       },
       setReport: (draft, report) => {
         draft.report = report
+        if (report === null) {
+          // Clearing on session switch: there is no report yet, so don't claim
+          // "ready" or stamp a fresh `refreshedAt` — the caller re-audits at once.
+          draft.state = 'loading'
+          draft.error = null
+          return
+        }
         draft.state = 'ready'
         draft.error = null
         draft.refreshedAt = Date.now()

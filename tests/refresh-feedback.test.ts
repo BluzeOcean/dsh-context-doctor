@@ -103,10 +103,10 @@ test('REFRESH_CSS: 每条规则都带作用域，不会碰到宿主自己的按�
 test('组件: 刷新按钮把四个状态钩子、作用域和样式表都接上了', () => {
   const source = readFileSync(join(root, 'src', 'client', 'ContextAuditRing.tsx'), 'utf8')
   for (const hook of [
-    'data-pressed={pressed ? ''true'' : ''false''}',
+    "data-pressed={pressed ? 'true' : 'false'}",
     'data-cd-spin={refreshState.spinning',
     'data-cd-flash={refreshState.flash',
-    'disabled={state.state === ''loading''}',
+    "disabled={state.state === 'loading'}",
     'onClick={() => refresh(true, true)}',
     'data-cd-scope={styleScope}',
     'tag.textContent = REFRESH_CSS',
@@ -115,7 +115,7 @@ test('组件: 刷新按钮把四个状态钩子、作用域和样式表都接上
     assert.ok(source.includes(hook), `按钮缺少接线：${hook}`)
   }
   // 视觉状态必须来自纯函数，不能在组件里另起一套。
-  assert.ok(source.includes('from ''./refresh.ts'''), '组件应从 refresh.ts 引入契约')
+  assert.ok(source.includes("from './refresh.ts'"), '组件应从 refresh.ts 引入契约')
 })
 
 test('locale: 两个词典都带刷新文案', () => {

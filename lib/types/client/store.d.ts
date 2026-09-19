@@ -20,8 +20,8 @@ export interface AuditUiState {
 export type AuditUiActions = {
     /** Mark the fetch lifecycle. */
     setState: (draft: AuditUiState, state: AuditUiState['state'], error: string | null) => void;
-    /** Store a fetched report. */
-    setReport: (draft: AuditUiState, report: AuditReport) => void;
+    /** Store a fetched report, or clear it when switching conversations. */
+    setReport: (draft: AuditUiState, report: AuditReport | null) => void;
 };
 /** Create the audit store handle (apply world only; never module-level). */
 export declare function createAuditStore(): EngineStoreHandle<AuditUiState, AuditUiActions>;

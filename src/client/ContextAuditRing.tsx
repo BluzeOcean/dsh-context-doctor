@@ -268,6 +268,17 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
     return () => controllerRef.current?.abort()
   }, [refresh])
 
+  // When the user switches conversations, the panel must drop the previous
+  // session's report (otherwise the UI briefly shows the old session's data
+  // while the new audit loads) and re-audit. The host's 60s cache is keyed
+  // on sessionId, so `fresh=1` is the safe bet here even though a different
+  // sessionId would miss the cache anyway — the previous-session abort
+  // guarantees no in-flight response lands after the clear.
+  useEffect(() => {
+    actions.setReport(null)
+    refresh(true, true)
+  }, [sessionId])
+
   // While the panel is open: re-render the age line and the in-flight seconds,
   // and make sure neither the request nor the flash timer outlives the dock.
   useEffect(() => {

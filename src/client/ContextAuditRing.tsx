@@ -432,7 +432,7 @@ export function ContextAuditRing(props: ContextAuditRingProps): ReactElement {
                     ? <button key={row.name} type="button" onClick={() => revealFile(row.path as string)}
                       title={`${row.path} — ${t('cd.reveal')}`}
                       style={{ ...detailRowStyle, background: 'transparent', border: 0, color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
-                      <span style={{ ...detailNameStyle, cursor: 'pointer' }}>{row.name}</span>
+                      <span style={{ ...detailNameStyle, cursor: 'pointer', color: TONE.blue, textDecoration: 'underline', textDecorationColor: 'rgba(124, 155, 255, 0.45)', textUnderlineOffset: 2 }}>{row.name}</span>
                       <span style={detailValueStyle}>{formatTokens(row.tokens)}</span>
                     </button>
                     : <span key={row.name} style={detailRowStyle} title={row.name}>
